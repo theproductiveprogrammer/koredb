@@ -335,7 +335,7 @@ const kore = require('core')
 kore.addRec({ a: 'new record' }, 'MyList')
 
 // Process incoming records
-kore.setLogUpdate((rec) => {...})
+kore.setLogProcessor((rec) => {...})
 
 // Set who am i (see 'Who Am I' note below)
 DEVICE_ID = kore.uuid()
@@ -363,7 +363,62 @@ kore.checkReq((req) => {
 })
 ```
 
-## Who Am I
+# Processing Your Logs
+As described above, there are
+actually two main patterns in log
+processing:
+
+1. Records updated by writing a new
+   version of an existing record.
+2. Records updated by a 'command'
+   that updates an existing record
+   or set of records.
+
+**Kore** supports either or both
+patterns or you can choose to
+process the log messages entirely on
+your own.
+
+```
+kore.setLogProcessor(
+    { filter: { type: 'contact' },
+      gatheron: { 'name' } },
+    (contacts) => {
+        // all contact objects merged on name available here
+        // called each time they are updated
+    }
+)
+
+kore.setLogProcessor(
+    { filter: { type: 'contact' },
+      gatheron: { 'name' },
+      commands: [ { type: 'rename' }, { type: 'delete' } ] },
+    (command, contacts) => {
+        // Called whenever a matching command found
+        // with the current set of contacts.
+        // Expects the contacts to be updated with
+        // whatever the command is expected to do
+    },
+    (contacts) => {
+        // all contact objects merged on name and after
+        // all commands applied finally available here
+    }
+)
+
+kore.setLogProcessor((rec) => {
+    // All log records available
+    // here - no processing done
+})
+```
+
+
+# Who Am I
+Each **Kore** node writes to it's
+own personal log and shares this log
+with other nodes to create the
+integrated log. Each personal log is
+identified by a UUID.
+
 It is recommended that you set a
 UUID for every node that is
 running kore. You can use the
