@@ -408,10 +408,10 @@ authentication/authorization system
 that you want.
 
 ```
-function authorizeReq(req) {
+function authorizeReq(req, cb) {
     // Check req cookies/params etc
-    return 500 // Unauthorized
-    return null // can continue
+    cb(true) // can continue
+    cb(...) // anything else - unauthorised
 }
 let options = {
     ...
@@ -494,7 +494,7 @@ which can cause `kore` to slow down
 somewhat.
 
 
-# Kore Record Fields
+# Kore Record Fields (and Record Id's)
 A basic requirement of `kore` is
 that every record needs to be
 ordered.
@@ -520,11 +520,15 @@ two fields to every record:
         _korewho: The record writer
 
 Both these fields together also
-provide a nice way to uniquely
-identify a record as a combination
-of the two (a `recID`):
+provide a nice way for you to have a
+unique identity for a record across
+all nodes:
 
      recID = <recnum>-<whoami>
+
+
+**Kore** provides this helper
+function for you to use:
 
 ```
     let id = kore.recID(record)
