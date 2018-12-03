@@ -1,7 +1,7 @@
-Kore - The Simplest Distributed Log Database
-============================================
+Kore - The Simplest Distributed Log Datastore
+=============================================
 
-Are you looking for a simple
+Looking for a simple
 database to store and manage your
 data across multiple devices?
 **Kore** is the solution you need.
@@ -10,12 +10,12 @@ First we had
 [Lambda](https://en.wikipedia.org/wiki/Lambda_architecture).
 Then we had [Kappa](http://milinda.pathirage.org/kappa-architecture.com/)...
 
-And now, at last, we have **KORE**!
+Now we have **KORE**!
 
 ![kore.png](kore.png)
 
 
-**Kore** - The Simplest Distributed Log Database
+**Kore** - The Simplest Distributed Log Datastore
 
 ## Is Kore for me?
 
@@ -37,8 +37,11 @@ updates.
 
 **Kore** is not for you if you need
 a database with a heavy load
-(thousands of requests a minute).
-Otherwise **Kore** is an interesting
+(thousands of requests a minute), or
+you need the database to do a lot of
+processing/complex queries.
+
+Otherwise **Kore** is a very nice
 option you could keep in your
 toolbox for apps and side-projects.
 
@@ -48,7 +51,7 @@ exciting solution in the first place.
 
 # Why Log Databases?
 
-The Log is such a simple data
+The `Log` is such a simple data
 structure that for many years
 [we've overlooked it's potential](https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying).
 After all a 'log file' seems so
@@ -77,9 +80,11 @@ immutability including the ability
 to be accessed by multiple clients
 without fear.
 To take this property further
-**Kore** ensures that every log has
-only one _owner_ that can write to
-the log.  Everyone else is a reader.
+**Kore** ensures that every log
+manages 'shards' that only one
+_owner_ that can write to and that
+are merged together to form the
+final log.
 
 The second property of the log is
 that, being largely unstructured, it
@@ -92,28 +97,32 @@ records they do not understand.
 
 The third property of the log is
 that it is _easy to merge_. This
-means that given multiple logs, we
-can easily create a set of rules
-that allow anyone with the same set
-of logs to end up with the same
-global ordering of records. This
-property makes it ideal for a
-distributed database allowing for a
-very simple way to get eventual
-consistency.
+means that, given multiple logs,
+_anyone_ with access to them will
+end up with the exact same global
+ordering of records. This property
+makes it ideal for a distributed
+database allowing for a very simple
+way to get eventual consistency.
 
 Finally, because the log itself has
-no processing logic of it's own the
-data management algorithms are
-separated out and can become more
-and more sophisticated while still
-operating on the same log data.
-Simply decoupling the processing
-from the data gathering stage makes
-it a far more powerful system to use
-and grow. Gather all the data you
-can and figure out what to do with
-it later.
+no processing logic of it's own, we
+have to separate out the data
+management algorithms. This allows
+them to progress independently and
+become more and more sophisticated
+while still operating on the same
+log data.
+
+This simple step of decoupling the
+processing from the data gathering
+stage has been found to make a the
+system far more robust and powerful
+as well as easy to modify and grow.
+
+> Gather all the data you can.
+
+> And figure out what to do with it later!
 
 ## Light's...Camera...Action!
 
@@ -312,6 +321,15 @@ give cleverer results.
 Amazing isn't it?
 
 
+(PS: In case you think the second
+method is complicated - don't worry.
+**Kore** actually supports this
+exact kind of diff-merging of
+records _out of the box_! You don't
+have to worry about implementing it
+yourself. See the "Processing Logs"
+section below).
+
 # The Core of Kore
 
 **Kore** manages the storage and
@@ -328,49 +346,89 @@ for connections from other nodes.
 
 
 ```
-const kore = require('core')
+const kore = require('kore').node()
 ...
 
 // Add a new record
-kore.addRec({ a: 'new record' }, 'MyList')
+kore.addRec('MyList', { a: 'new record' }, (err)=>{...})
 
 // Process incoming records
-kore.setLogProcessor((rec) => {...})
+kore.logProcessor('MyList', (err, all_recs, new_recs) => {...})
 
-// Set who am i (see 'Who Am I' note below)
-DEVICE_ID = kore.uuid()
-kore.setWhoAmI(DEVICE_ID)
-
-// Save logs locally in given DB
-// folder
-kore.setSaveLocation(<path to database folder>)
-
-// Connect to other nodes to
-// synchronize our logs
-kore.addConnection(<http url>)
-
-// Start server that other nodes can
-// use to synchronize with
-kore.startServer(<port number to listen>)
-
-// Inject a handler to examine all
-// incoming requests (to allow you
-// to hook into any authentication
-// system you like).
-kore.checkReq((req) => {
-    return 500 // Auth failed
-    return null // can continue
-})
 ```
 
-# Processing Your Logs
-As described above, there are
-actually two main patterns in log
-processing:
+**Kore** can be started with several
+options to save your logs to disk,
+connect to other nodes, set error
+handling functions and so on.
 
-1. Records updated by writing a new
-   version of an existing record.
-2. Records updated by a 'command'
+```
+
+let options = {
+    whoami: <uuid identifying node>,
+    saveTo: <db folder to save logs>,
+    connect: <connect to other node>,
+    listen: <port to listen for other nodes>,
+    checkReq: <authentication hook fn>,
+    errfn: <your replacement for console.error>,
+    migrate: <migration function>,
+}
+const kore = require('kore').node(options)
+
+```
+All the settings are optional and
+will depend on the configuration of
+your network of nodes.
+
+Setting `whoami` can be done by
+generating and saving a NODEID
+somewhere. Doing so is highly
+recommended (see 'Who Am I' note
+below).
+
+```
+let NODEID = kore.uuid()
+let options = {
+    ...
+    whoami: NODEID,
+    ...
+}
+```
+
+# Authorization
+Because a node can listen for other
+node requests it has to be able to
+authenticate that those requests are
+valid.
+
+To do this **Kore** provides a
+`checkReq` function that you can use
+to hook into any
+authentication/authorization system
+that you want.
+
+```
+function authorizeReq(req) {
+    // Check req cookies/params etc
+    return 500 // Unauthorized
+    return null // can continue
+}
+let options = {
+    ...
+    checkReq: authorizeReq,
+    ...
+}
+```
+
+# Processing Logs
+
+As we have seen in the introduction,
+there are actually two main patterns
+in log processing:
+
+1. Records are updated by writing a
+   new version of an existing record.
+2. Records are updated by a 'command'
    that updates an existing record
    or set of records.
 
@@ -380,32 +438,30 @@ process the log messages entirely on
 your own.
 
 ```
-kore.setLogProcessor(
-    { filter: { type: 'contact' },
-      gatheron: { 'name' } },
-    (contacts) => {
+kore.logProcessor('MyList',
+    { filter: { type: 'contact' }, gatheron: 'name' },
+    (err, contacts) => {
         // all contact objects merged on name available here
         // called each time they are updated
     }
 )
 
-kore.setLogProcessor(
-    { filter: { type: 'contact' },
-      gatheron: { 'name' },
+kore.logProcessor('MyList',
+    { filter: { type: 'contact' }, gatheron: 'name',
       commands: [ { type: 'rename' }, { type: 'delete' } ] },
-    (command, contacts) => {
+    (err, commandrec, contacts) => {
         // Called whenever a matching command found
         // with the current set of contacts.
         // Expects the contacts to be updated with
         // whatever the command is expected to do
     },
-    (contacts) => {
+    (err, contacts) => {
         // all contact objects merged on name and after
         // all commands applied finally available here
     }
 )
 
-kore.setLogProcessor((rec) => {
+kore.logProcessor('MyList', (err, all_recs, new_recs) => {
     // All log records available
     // here - no processing done
 })
@@ -414,10 +470,12 @@ kore.setLogProcessor((rec) => {
 
 # Who Am I
 Each **Kore** node writes to it's
-own personal log and shares this log
-with other nodes to create the
-integrated log. Each personal log is
-identified by a UUID.
+own personal piece of the log (see
+'**Kore Record Fields**' below) and
+shares this with other nodes to
+create the integrated log. Each
+personal log is identified by a
+UUID.
 
 It is recommended that you set a
 UUID for every node that is
@@ -435,6 +493,44 @@ internal logs that need to be merged
 which can cause `kore` to slow down
 somewhat.
 
+
+# Kore Record Fields
+A basic requirement of `kore` is
+that every record needs to be
+ordered.
+
+As described above (in 'Who Am I')
+a record also must 'belong' to a
+node - the node that created that
+record. Records belonging to each
+node are kept in separate 'shards'
+of the log.
+
+Having shards ensures that a node,
+as it writes, does not step on
+another nodes toes. This is what
+allows us to have distributed writes
+that merge seamlessly with each
+other.
+
+To solve these issues, **Kore** adds
+two fields to every record:
+
+        _korenum: The record number
+        _korewho: The record writer
+
+Both these fields together also
+provide a nice way to uniquely
+identify a record as a combination
+of the two (a `recID`):
+
+     recID = <recnum>-<whoami>
+
+```
+    let id = kore.recID(record)
+```
+
+
 # Migration
 
 At some point, you may want to clean
@@ -444,14 +540,15 @@ in the new" is your motto as you
 sweep out old records and formats and
 start with a clean new slate.
 
-You want to do this? No problem.
-**Kore** supports you
-whole-heartedly. **Kore** allows you
-to provide a 'migration function'
-that transforms your old log into a
-new one.
+At this time too **Kore** has you
+covered. **Kore** allows you to
+provide a 'migration function' that
+transforms your old log into a new
+one.
 
-To do this, designate _one_ of you
+## Migrator Pattern
+To do this, a good practice is to
+designate only _one_ of your
 nodes as the migrator. This node
 will accept the migration function:
 
@@ -475,9 +572,10 @@ kore.migrate('MyList', 'MyList2', (rec) => {
 ```
 
 Your nodes should then move over to
-using the new log ('MyList2') and
-then - gradually, you can remove
-support for the old log ('MyList1').
+using the new log ('MyList2') as you -
+gradually - remove support for the
+old log ('MyList1').
+
 As older nodes continue to write to
 the old list the migrator node will
 migrate those records over to the
