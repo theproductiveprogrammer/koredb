@@ -350,10 +350,10 @@ const kore = require('kore').node()
 ...
 
 // Add a new record
-kore.addRec('MyList', { a: 'new record' }, (err)=>{...})
+kore.addRec('MyList', { a: 'new record' })
 
 // Process incoming records
-kore.logProcessor('MyList', (err, all_recs, new_recs) => {...})
+kore.logProcessor('MyList', (err, recs, shards) => {...})
 
 ```
 
@@ -385,15 +385,6 @@ generating and saving a NODEID
 somewhere. Doing so is highly
 recommended (see 'Who Am I' note
 below).
-
-```
-let NODEID = kore.uuid()
-let options = {
-    ...
-    whoami: NODEID,
-    ...
-}
-```
 
 # Authorization
 Because a node can listen for other
@@ -449,19 +440,18 @@ kore.logProcessor('MyList',
 kore.logProcessor('MyList',
     { filter: { type: 'contact' }, gatheron: 'name',
       commands: [ { type: 'rename' }, { type: 'delete' } ] },
-    (err, commandrec, contacts) => {
+    (err, contacts, commandrec) => {
         // Called whenever a matching command found
         // with the current set of contacts.
         // Expects the contacts to be updated with
         // whatever the command is expected to do
-    },
-    (err, contacts) => {
-        // all contact objects merged on name and after
-        // all commands applied finally available here
+        // Finally called with no commandrec when
+        // all contact objects merged by name
+        // called each time there is an update
     }
 )
 
-kore.logProcessor('MyList', (err, all_recs, new_recs) => {
+kore.logProcessor('MyList', (err, recs, shards) => {
     // All log records available
     // here - no processing done
 })
@@ -484,6 +474,19 @@ function `kore.uuid()` to generate
 the UUID for your node and store it
 so it can be provided every time on
 start up.
+
+```
+let NODEID = kore.uuid()
+// Save NODEID and reload whenever
+// node is re-started
+...
+let options = {
+    ...
+    whoami: NODEID,
+    ...
+}
+const kore = require('kore').node(options)
+```
 
 If you do not provide this, kore
 auto-generates a uuid every time
