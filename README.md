@@ -353,7 +353,7 @@ const kore = require('kore').node()
 kore.addRec('MyList', { a: 'new record' })
 
 // Process incoming records
-kore.logProcessor('MyList', (err, recs, shards) => {...})
+kore.logProcessor('MyList', (err, recs, logname) => {...})
 
 ```
 
@@ -431,7 +431,7 @@ your own.
 ```
 kore.logProcessor('MyList',
     { filter: { type: 'contact' }, gatheron: 'name' },
-    (err, contacts) => {
+    (err, contacts, logname) => {
         // all contact objects merged on name available here
         // called each time they are updated
     }
@@ -440,7 +440,7 @@ kore.logProcessor('MyList',
 kore.logProcessor('MyList',
     { filter: { type: 'contact' }, gatheron: 'name',
       commands: [ { type: 'rename' }, { type: 'delete' } ] },
-    (err, contacts, commandrec) => {
+    (err, contacts, logname, commandrec) => {
         // Called whenever a matching command found
         // with the current set of contacts.
         // Expects the contacts to be updated with
@@ -451,12 +451,31 @@ kore.logProcessor('MyList',
     }
 )
 
-kore.logProcessor('MyList', (err, recs, shards) => {
+kore.logProcessor('MyList', (err, recs, logname) => {
     // All log records available
     // here - no processing done
 })
 ```
 
+## Caching
+
+When new records are added **Kore**
+caches the old results requested so
+that it does not need to process the
+entire log everytime. For large logs
+this results in a significant speed
+up.
+
+If you are processing the log
+records yourself, you can use the
+same caching mechanisms:
+
+```
+let cache = {} // managed by kore
+kore.cachedUpto(logname, recs, cache)
+...
+let recs_to_process = kore.afterCached(cache, logname, recs)
+```
 
 # Who Am I
 Each **Kore** node writes to it's
