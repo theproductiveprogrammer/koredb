@@ -30,6 +30,8 @@ function KD() {
         CHECKREQ: null,
         ERR: null,
 
+        FLUSH_PERIOD: 0,
+
         MIGRATEFN: null,
 
         SYNCHED: false,
@@ -39,6 +41,8 @@ function KD() {
 
         LOG_PROCESSORS: {},
         PROCESSOR_CACHE: {},
+
+        SAVEINFO: {},
     }
 }
 
@@ -60,6 +64,30 @@ function shard(logname, writer) {
         log: logname,
         writer: writer,
         records: [],
+    }
+}
+
+/*      outcome/
+ * Return a new 'saveinfo' for the
+ * given log.
+ */
+function saveInfo(logname) {
+    return {
+        name: logname,
+        shardInfo: {},
+    }
+}
+
+/*      outcome/
+ * Return a new 'shardInfo' for the
+ * given shard
+ */
+function shardInfo(shard) {
+    return {
+        writer: shard.writer,
+        savedUpto: 0,
+        lastFlushed: Date.now(),
+        flushTimer: null,
     }
 }
 
@@ -141,6 +169,8 @@ module.exports = {
     KD: KD,
     log: log,
     shard: shard,
+    saveInfo: saveInfo,
+    shardInfo: shardInfo,
     setKoreFields: setKoreFields,
     latestRecNum: latestRecNum,
     recID: recID,

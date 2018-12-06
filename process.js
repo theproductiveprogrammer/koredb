@@ -1,6 +1,9 @@
 'use strict'
 
+const ds = require('./ds')
+const db = require('./persist')
 const ca = require('./cache')
+
 
 /*      outcome/
  * Add a user log processing
@@ -105,8 +108,123 @@ function syncUpdatedLogs(kd) {
     // TODO
 }
 
+/*      outcome/
+ * Walk through all the shards of
+ * the logs and check if there is
+ * anything remaining to be saved.
+ * If there is, save it.
+ */
 function saveUpdatedLogs(kd) {
-    // TODO
+    if(!kd.SAVETO) return
+    for(let k in kd.LOGS) {
+        let log = kd.LOGS[k]
+        let si = alwaysGetSaveInfo(log.name, kd)
+
+        for(let key in log.shards) {
+            let shard = log.shards[key]
+            let shi = alwaysGetShardInfo(shard, si)
+
+            save_shard_recs_1(shard, shi)
+        }
+    }
+
+    /*      outcome
+     * If there are new records to
+     * save, write them to disk and
+     * flush them.
+     */
+    function save_shard_recs_1(shard, shi) {
+        if(shi.savedUpto >= shard.records.length) return
+        db.saveTo(kd.SAVETO,
+            shard,
+            shard.records.slice(shi.savedUpto),
+            (err) => {
+                if(err) kd.ERR(err)
+                else {
+                    shi.savedUpto = shard.records.length
+                    flush_1(shard, shi)
+                }
+            })
+    }
+
+    /*      problem/
+     * To ensure that our data is
+     * persisted, we need to flush
+     * it to disk. However,
+     * constantly flushing to disk
+     * can make the system very
+     * slow.
+     *
+     *      way/
+     * Only flush if a certain
+     * period (kd.FLUSH_PERIOD) has
+     * passed. If not, launch a
+     * timeout that allows other
+     * writes to happen in between
+     * then launch the flush.
+     */
+    function flush_1(shard, shi, afterTimeout) {
+        if(afterTimeout) shi.flushTimer = null
+
+        let shouldFlush = false
+        if(afterTimeout) shouldFlush = true
+        if(kd.FLUSH_PERIOD < Date.now() - shi.lastFlushed) shouldFlush = true
+
+        if(shouldFlush) {
+            db.flush(kd.SAVETO, shard)
+            shi.lastFlushed = Date.now()
+        } else {
+            if(shi.flushTimer) return /* do nothing */
+            shi.flushTimer = setTimeout(() => {
+                flush_1(shard, shi, true)
+            }, kd.FLUSH_PERIOD)
+        }
+    }
+}
+
+/*      problem/
+ * We have loaded some logs from
+ * disk and we need to keep track of
+ * them so we don't attempt to
+ * re-save them.
+ *
+ *      way/
+ * We keep track of a set of
+ * 'saveInfo' which holds the
+ * information of each shard on
+ * disk and what has been saved
+ * already.
+ */
+function markLoaded(logs, kd) {
+    for(let k in logs) {
+        let log = logs[k]
+        let si = alwaysGetSaveInfo(log.name, kd)
+        for(let key in log.shards) {
+            let shard = log.shards[key]
+            let shi = alwaysGetShardInfo(shard, si)
+            shi.savedUpto = shard.records.length
+        }
+    }
+}
+
+function alwaysGetSaveInfo(logname, kd) {
+    let si = kd.SAVEINFO[logname]
+    if(si) return si
+
+    si = ds.saveInfo(logname)
+    kd.SAVEINFO[logname] = si
+
+    return si
+}
+
+function alwaysGetShardInfo(shard, si) {
+    let shi = si.shardInfo[shard.writer]
+    if(shi) return shi
+
+    shi = ds.shardInfo(shard)
+    si.shardInfo[shard.writer] = shi
+
+    return shi
 }
 
 /*
@@ -234,4 +352,5 @@ module.exports = {
     logProcessor: logProcessor,
     mergeLogs: mergeLogs,
     raiseNewRecsEvent: raiseNewRecsEvent,
+    markLoaded: markLoaded,
 }

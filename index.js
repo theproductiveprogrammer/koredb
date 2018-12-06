@@ -36,6 +36,7 @@ function node(options) {
     koredata.LISTEN = listen_1(options)
     koredata.CHECKREQ = checkreq_1(options)
     koredata.ERR = errfn_1(options)
+    koredata.FLUSH_PERIOD = flushperiod_1(options)
     koredata.MIGRATEFN = migratefn_1(options)
 
     start_node_1(koredata)
@@ -120,6 +121,16 @@ function node(options) {
     }
 
     /*      outcome/
+     * Return the user-defined flush
+     * period (in seconds) or a
+     * default of 5 seconds
+     */
+    function flushperiod_1(options) {
+        if(options.flush_period) return options.flush_period
+        else return 5000
+    }
+
+    /*      outcome/
      * Return the user-defined
      * migration function
      */
@@ -194,6 +205,7 @@ function node(options) {
             db.loadFrom(kd.SAVETO, (err, logs) => {
                 if(err) cb(err)
                 else {
+                    pr.markLoaded(logs, kd)
                     pr.mergeLogs(logs, kd.LOGS)
                     nw.join(kd.CONNECT, (err, logs) => {
                         if(err) cb(err)
@@ -209,6 +221,7 @@ function node(options) {
             db.loadFrom(kd.SAVETO, (err, logs) => {
                 if(err) cb(err)
                 else {
+                    pr.markLoaded(logs, kd)
                     pr.mergeLogs(logs, kd.LOGS)
                     switchToSynchedMode(kd)
                     cb()
