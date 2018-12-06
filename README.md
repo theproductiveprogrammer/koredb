@@ -364,6 +364,7 @@ let options = {
     connect: <connect to other node>,
     listen: <port to listen for other nodes>,
     checkReq: <authentication hook fn>,
+    authReq: <authentication hook fn>,
     errfn: <your replacement for console.error>,
     migrate: <migration function>,
 }
@@ -386,21 +387,39 @@ node requests it has to be able to
 authenticate that those requests are
 valid.
 
-To do this **Kore** provides a
-`checkReq` function that you can use
-to hook into any
+To do this **Kore** provides a pair
+of functions - `authReq/checkReq`
+that you can use to hook into any
 authentication/authorization system
 that you want.
 
 ```
-function authorizeReq(req, cb) {
+// On Client
+function authorizeReq(url, headers, cb) {
+    // Add auth headers you need
+    headers['X-Auth-X'] = ...
+    // Or add/update cookies
+    headers['Cookie'] = headers['Cookie'] + more_cookies
+    ...
+    // Or update the URL with some nonce
+    // (just call cb() to keep URL the same)
+    cb(null, url + auth_nonce)
+}
+let options = {
+    ...
+    authReq: authorizeReq,
+    ...
+}
+
+// On Server
+function checkReq(req, cb) {
     // Check req cookies/params etc
     cb(true) // can continue
     cb(...) // anything else - unauthorised
 }
 let options = {
     ...
-    checkReq: authorizeReq,
+    checkReq: checkReq,
     ...
 }
 ```
