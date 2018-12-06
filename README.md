@@ -361,7 +361,7 @@ handling functions and so on.
 let options = {
     whoami: <uuid identifying node>,
     saveTo: <db folder to save logs>,
-    connect: <connect to other node>,
+    connect: <host:port of other node>,
     listen: <port to listen for other nodes>,
     checkReq: <authentication hook fn>,
     authReq: <authentication hook fn>,
