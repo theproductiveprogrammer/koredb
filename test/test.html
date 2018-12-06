@@ -1,0 +1,201 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Kore Test</title>
+    <meta name="author" content="charles.lobo@gmail.com">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+.resp-block,
+.resp-block *{
+    font-family: monospace;
+    white-space: pre;
+}
+.centered {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+#card {
+    transition: height 20s;
+}
+#running {
+    display: none;
+}
+</style>
+
+    <link rel=stylesheet href=tachyons.min.css></link>
+
+    <script>
+        /*      outcome/
+         * Send an AJAX post request (serializing data objects if
+         * needed) and responding with the status and response text.
+         */
+        function ajax(url_, data, cb) {
+            if(typeof data == 'object') data = JSON.stringify(data)
+            let xhr = new XMLHttpRequest()
+            xhr.onreadystatechange = function() {
+                if(xhr.readyState == XMLHttpRequest.DONE) {
+                    cb(xhr.status, xhr.responseText)
+                }
+            }
+            xhr.open('POST', url_)
+            xhr.send(data)
+        }
+
+        /*      outcome/
+         * Copy the given string to clipboard
+         */
+        function copyToClipboard(str) {
+            const e = document.createElement('textarea');
+            e.value = str;
+            document.body.appendChild(e);
+            e.select();
+            document.execCommand('copy');
+            document.body.removeChild(e);
+       }
+    </script>
+
+</head>
+<body class="bg-black-90">
+
+    <div id=card class="centered bg-white shadow-3 ba br3 b--black-40 overflow-hidden">
+        <img src=kore.png></img>
+        <div class="f7 center tc black-70 ma2 w-80">
+            [Results in Developer Console. Open to View]
+        </div>
+        <div id=stopped class="pa2">
+            <input class="center db mt3 pa2" type=submit value="UUID" onclick="uuid()">
+            <div id=uuidval class="center w-50 f6 mt1 mb3 tc pointer black-50"
+                onclick="copyUUID()"></div>
+            <input class="center db pa2" type=text placeholder='Who Am I' id=whoami>
+            <input class="center db pa2" type=text placeholder='SaveTo' id=saveTo>
+            <input class="center db pa2" type=text placeholder='Connect' id=connect>
+            <input class="center db pa2" type=text placeholder='Listen' id=listen>
+            <input class="center db ma3 pa2" type=submit value="Start Node"
+                   onclick="startNode()">
+        </div>
+        <div id=running class="pa2">
+            <div class="w-100 tc">
+                <input class="center db ma3 pa2"
+                    type=text placeholder='Log Name' id=logname>
+            </div>
+            <div class="w-100 tc">
+                <input type=text class="pa2" placeholder='Name1' id=recn1>
+                <input type=text class="pa2" placeholder='Val1' id=recv1>
+            </div>
+            <div class="w-100 tc">
+                <input type=text class="pa2" placeholder='Name2' id=recn2>
+                <input type=text class="pa2" placeholder='Val2' id=recv2>
+            </div>
+            <div class="w-100 tc">
+                <input class="center db mt1 pa2 w-80" type=text
+                       placeholder='Additional Fields (JSON)' id=recjson>
+            </div>
+            <input class="center db ma3 mb4 pa2" type=submit value="Add Record"
+                   onclick="addRecord()">
+        </div>
+    </div>
+
+    <script>
+        function api(endpoint) {
+            return `/kore-test/${endpoint}`
+        }
+
+        function uuid() {
+            ajax(api('uuid'), null, (status, resp) => {
+                console.log(status, resp)
+                if(status == 200) {
+                    let e = document.getElementById('uuidval')
+                    e.innerText = resp
+                }
+            })
+        }
+        function copyUUID() {
+            let e = document.getElementById('uuidval')
+            let v = e.innerText
+            if(!v) return
+            copyToClipboard(v)
+            e.innerText = 'Copied to Clipboard!'
+            setTimeout(() => {
+                e.innerText = v
+            }, 1000)
+        }
+
+        function getval(id_) {
+            let e = document.getElementById(id_)
+            if(!e) return undefined
+            let v = e.value
+            if(!v) return undefined
+            return v.trim()
+        }
+
+        function nodeStarted() {
+            let v1 = document.getElementById('stopped')
+            let v2 = document.getElementById('running')
+            v1.style.display = 'none'
+            v2.style.display = 'block'
+        }
+        function startNode() {
+            let options = {
+                whoami: getval('whoami'),
+                saveTo: getval('saveTo'),
+                connect: getval('connect'),
+                listen: getval('listen'),
+            }
+            ajax(api('startNode'), options, (status, resp) => {
+                console.log(status, resp)
+                nodeStarted()
+            })
+        }
+        function addRecord() {
+            let logn = getval('logname')
+            let n1 = getval('recn1')
+            let v1 = getval('recv1')
+            let n2 = getval('recn2')
+            let v2 = getval('recv2')
+            let addl = getval('recjson')
+            let rec
+            try {
+                if(addl) rec = JSON.parse(addl)
+                else rec = {}
+            } catch(e) {
+                console.error(e)
+                return
+            }
+            if(n1 && v1) rec[n1] = v1
+            if(n2 && v2) rec[n2] = v2
+            if(!logn) {
+                console.error('No log named to add record to')
+            } else if(Object.keys(rec).length == 0) {
+                console.error('No data to send')
+            } else {
+                ajax(api('addRec'), {log: logn, rec: rec}, (status, resp) => {
+                    console.log(status, resp)
+                })
+            }
+        }
+    </script>
+
+    <script>
+        /*      outcome/
+         * Set up the server push so we can be notified when server
+         * wants to send us stuff
+         */
+        function sse() {
+            const evt = new EventSource('/test-sse')
+            evt.onmessage = function(e) {
+                try {
+                    console.log(JSON.parse(e.data))
+                } catch(err) {
+                    console.log(e.data)
+                }
+            }
+        }
+        sse()
+    </script>
+
+</body>
+</html>

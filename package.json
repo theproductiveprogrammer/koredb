@@ -1,0 +1,14 @@
+{
+  "name": "kore",
+  "version": "0.1.0",
+  "description": "The Simplest Distributed Log Database",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/"
+  },
+  "author": "charles.lobo@gmail.com",
+  "license": "MIT",
+  "dependencies": {
+    "uuid": "^3.3.2"
+  }
+}
