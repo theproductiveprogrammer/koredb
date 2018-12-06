@@ -79,12 +79,6 @@ properties that we associate with
 immutability including the ability
 to be accessed by multiple clients
 without fear.
-To take this property further
-**Kore** ensures that every log
-manages 'shards' that only one
-_owner_ that can write to and that
-are merged together to form the
-final log.
 
 The second property of the log is
 that, being largely unstructured, it
@@ -138,7 +132,7 @@ We start off our log just by
 recording entries in our list:
 
 ```
-[Log: MyList]
+[MyList]
 
 1 { do: Buy Milk }
 2 { do: Buy Cheese }
@@ -156,7 +150,7 @@ can make it understand it going
 forward.
 
 ```
-[Log: MyList]
+[MyList]
 
 1 { do: Buy Milk }
 2 { do: Buy Cheese }
@@ -174,14 +168,14 @@ app so much we put it everywhere -
 (like on our phone AND our iPad!)
 
 ```
-[Log: MyList - PhoneLog]
+[MyList - PhoneLog]
 1 { do: Buy Milk }
 2 { do: Buy Cheese }
 3 { do: Remember I'm Lactose Intolerant }
 4 { name: Alice <3, number: +99 887 886 }
 5 ...
 
-[Log: MyList - PadLog]
+[MyList - PadLog]
 1 { do: Pick up dinner }
 2 ...
 ```
@@ -191,7 +185,7 @@ complete list (on both the phone and
 iPad):
 
 ```
-[Log: MyList]
+[MyList]
 1 { do: Pick up dinner }
 1 { do: Buy Milk }
 2 { do: Buy Cheese }
@@ -210,7 +204,7 @@ way to change it is to create a new
 'update' record.
 
 ```
-[Log: MyList - PhoneLog]
+[MyList - PhoneLog]
 3 ...
 4 { name: Alice <3, number: +99 887 886 }
 5 { change: { name: Alice <3 }, to: { name: I hate Alice } }
@@ -219,7 +213,7 @@ way to change it is to create a new
 
 And the same on the iPad:
 ```
-[Log: MyList - PadLog]
+[MyList - PadLog]
 7 ...
 8 { change: { number: +99 887 886 }, to: { number: +99 776 665 } }
 9 ...
@@ -229,7 +223,7 @@ Now combining them is easy! No more
 overwriting issues.
 
 ```
-[Log: MyList - PadLog]
+[MyList]
 3 ...
 4 { name: Alice <3, number: +99 887 886 }
 5 { change: { name: Alice <3 }, to: { name: I hate Alice } }
@@ -253,13 +247,13 @@ version and not by making a 'change'
 record. How would that look?
 
 ```
-[Log: MyList - PhoneLog]
+[MyList - PhoneLog]
 3 ...
 4 { name: Alice <3, number: +99 887 886 }
 5 { name: I hate Alice, number: +99 887 886 }
 6 ...
 
-[Log: MyList - PadLog]
+[MyList - PadLog]
 7 ...
 8 { name: Alice <3, number: +99 776 665 }
 9 ...
@@ -296,14 +290,14 @@ previous version to find what has
 changed.
 
 ```
-[Log: MyList - PhoneLog]
+[MyList - PhoneLog]
 3 ...
 4 { name: Alice <3, number: +99 887 886 }
 5 { name: I hate Alice, number: +99 887 886 }
     --> Processor derives: { change: { name: I hate Alice } }
 6 ...
 
-[Log: MyList - PadLog]
+[MyList - PadLog]
 7 ...
 8 { name: Alice <3, number: +99 776 665 }
     --> Processor derives: { change: { number: +99 776 665 } }
@@ -333,8 +327,8 @@ section below).
 # The Core of Kore
 
 **Kore** manages the storage and
-synchronization of log records for
-your application.
+synchronization of logs for your
+application.
 
 ![node.png](node.png)
 
@@ -353,7 +347,7 @@ const kore = require('kore').node()
 kore.addRec('MyList', { a: 'new record' })
 
 // Process incoming records
-kore.logProcessor('MyList', (err, recs, logname) => {...})
+kore.addProcessor('MyList', (err, recs, logname) => {...})
 
 ```
 
@@ -411,7 +405,7 @@ let options = {
 }
 ```
 
-# Processing Logs
+# Processing Log Records
 
 As we have seen in the introduction,
 there are actually two main patterns
@@ -429,7 +423,7 @@ process the log messages entirely on
 your own.
 
 ```
-kore.logProcessor('MyList',
+kore.addProcessor('MyList',
     { filter: { type: 'contact' }, gatheron: 'name' },
     (err, contacts, logname) => {
         // all contact objects merged on name available here
@@ -437,7 +431,7 @@ kore.logProcessor('MyList',
     }
 )
 
-kore.logProcessor('MyList',
+kore.addProcessor('MyList',
     { filter: { type: 'contact' }, gatheron: 'name',
       commands: [ { type: 'rename' }, { type: 'delete' } ] },
     (err, contacts, logname, commandrec) => {
@@ -451,7 +445,7 @@ kore.logProcessor('MyList',
     }
 )
 
-kore.logProcessor('MyList', (err, recs, logname) => {
+kore.addProcessor('MyList', (err, recs, logname) => {
     // All log records available
     // here - no processing done
 })
@@ -467,8 +461,9 @@ this results in a significant speed
 up.
 
 If you are processing the log
-records yourself, you can use the
-same caching mechanisms:
+records yourself, **Kore** allows
+you to use the same caching
+mechanisms it uses itself:
 
 ```
 let cache = {} // managed by kore
@@ -483,16 +478,16 @@ own personal piece of the log (see
 '**Kore Record Fields**' below) and
 shares this with other nodes to
 create the integrated log. Each
-personal log is identified by a
-UUID.
+personal log 'shard' is identified
+by a UUID.
 
-It is recommended that you set a
-UUID for every node that is
-running kore. You can use the
-function `kore.uuid()` to generate
-the UUID for your node and store it
-so it can be provided every time on
-start up.
+For this reason, it is recommended
+that you set a UUID for every node
+that is running kore. You can use
+the function `kore.uuid()` to
+generate the UUID for your node and
+store it so it can be provided every
+time on start up.
 
 ```
 let NODEID = kore.uuid()
@@ -511,9 +506,9 @@ If you do not provide this, kore
 auto-generates a uuid every time
 it starts up - which means that
 there could be a large number of
-internal logs that need to be merged
+log shards that need to be merged
 which can cause `kore` to slow down
-somewhat.
+after a while.
 
 
 # Kore Record Fields (and Record Id's)
@@ -622,5 +617,8 @@ or simply
 
 # Pending Features
 
+* Connection/Networking Support
+* Log Processor Support
+* Migration Support
 * Support for other languages
   (Python, Java, ...)

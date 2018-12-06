@@ -43,7 +43,7 @@ function node(options) {
 
     return {
         addRec: (...a) => up.addRec(koredata, ...a),
-        logProcessor: (...a) => pr.logProcessor(koredata, ...a),
+        addProcessor: (...a) => pr.addProcessor(koredata, ...a),
 
         recID: ds.recID,
         uuid: up.uuid,

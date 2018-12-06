@@ -10,7 +10,7 @@ const ca = require('./cache')
  * function to a set of processors
  * for the requested log
  */
-function logProcessor(kd, logname, options, fn){
+function addProcessor(kd, logname, options, fn){
     let processors = alwaysGetProcessors(logname, kd)
 
     let processor = {}
@@ -349,7 +349,7 @@ function mergeLogs(newlogs, mylogs) {
 }
 
 module.exports = {
-    logProcessor: logProcessor,
+    addProcessor: addProcessor,
     mergeLogs: mergeLogs,
     raiseNewRecsEvent: raiseNewRecsEvent,
     markLoaded: markLoaded,
