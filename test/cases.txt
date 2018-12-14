@@ -1,0 +1,28 @@
+List of Test Cases Tried
+========================
+
+[ ] Adding New Records to Log
+[ ] Adding New Records to Multiple Logs
+[ ] Adding Modified Records to Log
+[ ] Adding Command Records to Log
+[ ] Saving Records to Disk
+[ ] Loading Records from Disk
+[ ] Saving Records to Another Node
+[ ] Loading Records from Another Node
+[ ] Saving Records, Disconnecting, Adding Records, Resaving
+[ ] Saving Records, Restarting, Getting Records, Adding, Resaving
+[ ] Saving Records, Restarting, Not Getting Records, Adding, Getting
+    Records, Resaving
+[ ] Synchronizing Records to Another Node which is also Adding Records
+    - Start Node0
+    - Start Node1. Connect to Node 0.
+    - Add contact { name: "Harry" }  to "Log1"
+    - Start Node2. Connect to Node 0.
+    - Update contact { name: "Harry", age: "10" }
+    - Stop Node0
+    - Update in Node1: { name: "Harry", age: "12" }
+    - Update in Node2: { name: "Harry", age: "10", sex: "M" }
+    - Start Node0
+    - (Should merge correctly)
+[ ] Synchronizing Records to Another Node which is downstream from
+    another Node
