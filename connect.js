@@ -7,18 +7,29 @@ const url_ = require('url')
  * Set a flag that asks us to kick
  * off a sync as soon as possible
  * because we have changed something
- * (added new logs or something).
+ * (added new logs or something) and
+ * push the update info to all
+ * connected clients.
  */
 function syncNow(kd) {
     kd.SEND_SYNC_NOW = true
-    kd.PUSH_SYNC_NOW = true
+    sse_push_1(kd)
+}
+
+/*      outcome/
+ * Send Synchronization Requests and
+ * get server push notifications
+ */
+function join(connect, kd, cb) {
+    if(!connect.host || !connect.port) return cb(`Connect missing host:port`)
+    send_sync_reqs_1(connect, kd, cb)
+    connect_to_sse_1(connect, kd)
 }
 
 /*      outcome/
  * Periodically synchronize with the given URL.
  */
-function join(connect, kd, cb) {
-    if(!connect.host || !connect.port) return cb(`Connect missing host:port`)
+function send_sync_reqs_1(connect, kd, cb) {
     let url = connectURL(connect)
     setInterval(() => {
         let diff = Date.now() - kd.LAST_SEND_AT
@@ -28,6 +39,46 @@ function join(connect, kd, cb) {
             sendSync(url, kd, cb)
         }
     }, 500)
+}
+
+/*      outcome/
+ * Connect to the given connect URL
+ * and wait for SSE events. When
+ * fired, trigger a sync.
+ */
+function connect_to_sse_1(connect, kd) {
+    let url = serverpushURL(connect)
+    let options = {
+        method: 'GET',
+        headers: {
+            Connection: 'keep-alive',
+        },
+    }
+    let req = http.request(url, options, (res) => {
+        res.on('data', (chunk) => {
+            syncNow(kd)
+        })
+    })
+
+    req.on('error', () => {
+        setTimeout(() => {
+            // Reconnect if we loose
+            // connection
+            connect_to_sse_1(connect, kd)
+        }, 1000)
+    })
+    req.end()
+}
+
+/*      outcome/
+ * Push an event to all connected
+ * cients that we may have an update
+ */
+function sse_push_1(kd) {
+    for(let i = 0;i < kd.SERVER_PUSH_CONNECTIONS.length;i++) {
+        let res = kd.SERVER_PUSH_CONNECTIONS[i]
+        res.write('data: Kore Logs Updated\n\n')
+    }
 }
 
 /*      outcome/
@@ -102,9 +153,8 @@ function connectURL(connect) {
     return `http://${connect.host}:${connect.port}/kore/logs`
 }
 
-function validConnectURL(url) {
-    url = url_.parse(url)
-    return url.pathname == '/kore/logs'
+function serverpushURL(connect) {
+    return `http://${connect.host}:${connect.port}/kore/sse`
 }
 
 /*      problem/
@@ -349,10 +399,41 @@ function xtractData(data, cb) {
  */
 function listen(port, kd, cb) {
     let server = http.createServer((req, res) => {
-        incomingSync(req, res, kd, cb)
+        let url = url_.parse(req.url)
+        if(url.pathname == '/kore/logs') incomingSync(req, res, kd, cb)
+        else if(url.pathname == '/kore/sse') incomingSSE(req, res, kd, cb)
+        else invalidReq(res)
     })
     server.listen(port, (err) => {
         if(err) cb(err)
+    })
+}
+
+function invalidReq(res) {
+    res.writeHead(400)
+    res.end()
+}
+
+
+/*      outcome/
+ * Keep track of the connections so
+ * we can push updates, cleaning
+ * them up on errors.
+ */
+function incomingSSE(req, res, kd, cb) {
+    res.writeHead(200, {
+        "Connection": "keep-alive",
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/event-stream",
+    })
+    kd.SERVER_PUSH_CONNECTIONS.push(res)
+    res.on('error', () => {
+        for(let i = 0;i < kd.SERVER_PUSH_CONNECTIONS.length;i++) {
+            if(kd.SERVER_PUSH_CONNECTIONS[i] == req) {
+                kd.SERVER_PUSH_CONNECTIONS.splice(i, 1)
+                return
+            }
+        }
     })
 }
 
@@ -364,11 +445,7 @@ function listen(port, kd, cb) {
  */
 function incomingSync(req, res, kd, cb) {
 
-    if(invalid_req_1(req)) {
-        res.writeHead(400)
-        res.end()
-        return
-    }
+    if(req.method != 'POST') return invalidReq(res)
 
     if(kd.CHECKREQ) {
         kd.CHECKREQ(req, (ok) => {
@@ -377,11 +454,6 @@ function incomingSync(req, res, kd, cb) {
         })
     } else handle_sync_1(req, res, cb)
 
-
-    function invalid_req_1(req) {
-        if(req.method != 'POST') return true
-        return !validConnectURL(req.url)
-    }
 
     function handle_sync_1(req, res, cb) {
         let req_data = ""

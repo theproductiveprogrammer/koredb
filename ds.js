@@ -40,7 +40,6 @@ function KD() {
         UNSYNCHED_LOGS: {},
 
         SEND_SYNC_NOW: false,
-        PUSH_SYNC_NOW: false,
         LAST_SEND_AT: 0,
 
         LOGS: {},
@@ -51,6 +50,8 @@ function KD() {
         SAVEINFO: {},
 
         CONNECT_NODE_INFO: null,
+
+        SERVER_PUSH_CONNECTIONS: [],
     }
 }
 

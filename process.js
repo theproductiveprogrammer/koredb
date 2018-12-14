@@ -351,9 +351,12 @@ function isEq(o1, o2) {
 }
 
 
+/*      outcome/
+ * Request a synchronization with
+ * the network now (or asap)
+ */
 function syncUpdatedLogs(kd) {
     nw.syncNow(kd)
-    // TODO: Set up Server Push
 }
 
 /*      outcome/
