@@ -2,19 +2,17 @@
 
 const ds = require('./ds')
 const db = require('./persist')
+const nw = require('./connect')
 const ca = require('./cache')
 
 
 /*      outcome/
  * Add a user log processing
  * function to a set of processors
- * for the requested log
  */
-function addProcessor(kd, logname, options, fn){
-    let processors = alwaysGetProcessors(logname, kd)
+function addProcessor(kd, options, fn){
 
     let processor = {}
-    processor.logname = logname
     if(typeof options == 'function') {
         processor.options = {}
         processor.cb = options
@@ -23,21 +21,7 @@ function addProcessor(kd, logname, options, fn){
         processor.cb = fn
     }
 
-    processors.push(processor)
-}
-
-/*      outcome/
- * Get set of processors for the
- * given log (creating a new set if
- * doesn't exist)
- */
-function alwaysGetProcessors(logname, kd) {
-    let processors = kd.LOG_PROCESSORS[logname]
-    if(!processors) {
-        processors = []
-        kd.LOG_PROCESSORS[logname] = processors
-    }
-    return processors
+    kd.LOG_PROCESSORS.push(processor)
 }
 
 
@@ -51,61 +35,325 @@ function raiseNewRecsEvent(kd) {
 }
 
 /*      outcome/
- * Check if there are any processors
- * for each log. If there are and
- * there are new, uncached records
- * for each log, call the processors
- * with the logs.
+ * Provide all the log data to any
+ * user processors.
  */
 function processUpdatedLogs(kd) {
+    if(!kd.LOG_PROCESSORS.length) return
+
     for(let logname in kd.LOGS) {
         let log = kd.LOGS[logname]
-        let processors = kd.LOG_PROCESSORS[logname]
-        if(log && processors && processors.length) {
-            let all_recs = mergeShards(log)
-            let remaining = ca.afterCached(kd.PROCESSOR_CACHE, logname, all_recs)
-            if(remaining && remaining.length) {
-                for(let i = 0;i < processors.length;i++) {
-                    process(kd, processors[i], logname, all_recs, remaining)
-                }
+        let all_recs = logRecords(log)
+        let remaining = ca.afterCached(kd.PROCESSOR_CACHE, logname, all_recs)
+        if(remaining && remaining.length) {
+            for(let i = 0;i < kd.LOG_PROCESSORS.length;i++) {
+                let processor = kd.LOG_PROCESSORS[i]
+                process(kd, processor, logname, all_recs, remaining)
             }
-            ca.cachedUpto(logname, all_recs, kd.PROCESSOR_CACHE)
         }
+        ca.cachedUpto(logname, all_recs, kd.PROCESSOR_CACHE)
     }
 }
 
 /*      outcome/
- * Provide the logs to the processor
- * based on it's type - command,
- * gather, or raw(full)
+ * Gather the log if requested or
+ * provide the full logs to the
+ * processor.
  */
 function process(kd, processor, logname, all_recs, remaining) {
-    if(processor.commands) cmd_processor_1()
-    else if(processor.gatheron) gather_processor_1()
+    if(processor.options.gatheron) gather_processor_1()
     else full_processor_1()
 
-    function cmd_processor_1() {
-        // TODO
-    }
+    /*      outcome/
+     * Walk all the logs, sending
+     * command records and filtering
+     * and gathering the rest as
+     * requested.
+     */
     function gather_processor_1() {
-        // TODO
+        let filt_rem = remaining.filter(should_process_1)
+        if(!filt_rem || !filt_rem.length) return
+        let gathered = []
+        for(let i = 0;i < all_recs.length;i++) {
+            let rec = all_recs[i]
+            if(is_cmd_rec_1(rec)) {
+                processor.cb(null, gathered, logname, rec)
+            } else {
+                if(!filtered_1(rec)) continue
+                let key = rec[processor.options.gatheron]
+                if(!key) continue
+                add_1(i, rec, key, gathered)
+            }
+        }
+        if(gathered.length) {
+            processor.cb(null, gathered, logname)
+        }
     }
 
     /*      outcome/
-     * Call the 'raw' processor
-     * without any pre-processing
-     * done. Also pass the
-     * `remaining` records as an
-     * undocumented field (useful
-     * for debugging kore itself).
+     * Find the location where this
+     * record should go in the
+     * sorted array. If it is
+     * already present overwrite or
+     * merge it (depending on user
+     * options) otherwise insert it.
+     */
+    function add_1(rec_ndx, rec, key, gathered) {
+        let ndx = rec_loc_1(key, gathered)
+        if(ndx < 0) {
+            gathered.splice(0, 0, rec)
+            return
+        }
+        let r = gathered[ndx]
+        if(r[processor.options.gatheron] == key) {
+            if(processor.options.overwrite) gathered[ndx] = rec
+            else gathered[ndx] = merge_1(rec_ndx, rec, r)
+        } else {
+            gathered.splice(ndx+1, 0, rec)
+        }
+    }
+
+    /*      situation/
+     * Because we tolerate
+     * occasional disconnections
+     * among our nodes it is
+     * likely that sometimes we will
+     * update the same record in two
+     * locations.
+     *
+     *      problem/
+     * We would like to merge the
+     * results of changes across
+     * multiple nodes.
+     *
+     *      way/
+     * Instead of tracking each
+     * 'branch' and merging them we
+     * will try a simpler algorithm:
+     * 1. If the existing record has
+     *    been written by the same
+     *    writer, it can simply be
+     *    overwritten (you don't
+     *    need to merge with
+     *    yourself)
+     * 2. Get the difference between
+     *    the current record and
+     *    it's previous record and
+     *    apply that difference on
+     *    the current record
+     *    (transfer the `number` and
+     *    `writer` fields too)
+     *
+     * NB: This simplification
+     * doesn't work in all command
+     * cases (TODO?)
+     */
+    function merge_1(rec_ndx, rec, curr) {
+        if(curr._korewho == rec._korewho) return rec
+        let diff = diff_1(rec_ndx, rec)
+        let ret = {
+            _korenum: rec._korenum,
+            _korewho: rec._korewho,
+        }
+        for(let k in curr) {
+            if(diff.del[k]) continue
+            ret[k] = curr[k]
+        }
+        for(let k in diff.add) {
+            ret[k] = diff.add[k]
+        }
+        return ret
+
+        /*      outcome/
+         * Given a particular
+         * record, walk back to find
+         * it's parent (previous
+         * version) and return
+         * the differences between
+         * itself and it's parent
+         */
+        function diff_1(ndx, rec) {
+            let parent_ = find_parent_1(ndx, rec)
+            if(!parent_) return {
+                add: rec,
+                del: {},
+            }
+            let ret = {
+                add: {},
+                del: {},
+            }
+            for(let k in parent_) {
+                if(rec[k] === undefined) {
+                    ret.del[k] = true
+                }
+            }
+            for(let k in rec) {
+                if(!isEq(rec[k], parent_[k])) {
+                    ret.add[k] = rec[k]
+                }
+            }
+            return ret
+        }
+
+        /*      problem/
+         * Find the parent (previous
+         * version) of the record.
+         *
+         *      way/
+         * Walk back until we find a
+         * matching object. If the
+         * object is authored by us
+         * then "this is the droid we
+         * are looking for"! If not,
+         * we check if we have
+         * branched here (we have a
+         * matching record number).
+         * If not, it is an
+         * ancestor and hence our
+         * parent.
+         */
+        function find_parent_1(ndx, rec) {
+            let key = rec[processor.options.gatheron]
+            for(ndx = ndx-1;ndx >= 0;ndx--) {
+                let r = all_recs[ndx]
+                if(r[processor.options.gatheron] == key) {
+                    if(r._korewho == rec._korewho) return r
+                    if(is_ancestor_1(ndx, rec._korewho)) return r
+                }
+            }
+
+            function is_ancestor_1(ndx, who) {
+                let num = all_recs[ndx]._korenum
+                while(ndx > 0 && all_recs[ndx-1]._korenum == num) {
+                    ndx--
+                    if(all_recs[ndx]._korewho == who) return false
+                }
+                while(ndx < all_recs.length-1 && all_recs[ndx+1]._korenum == num) {
+                    ndx++
+                    if(all_recs[ndx]._korewho == who) return false
+                }
+                return true
+            }
+        }
+    }
+
+    /*      outcome/
+     * Return the position of the
+     * key in the sorted array or
+     * the position just before the
+     * key would be (if not
+     * present). Can return -1 if
+     * the position is before the
+     * beginning of the array.
+     */
+    function rec_loc_1(key, arr) {
+        let sz = arr.length
+        if(!sz) return -1
+        if(k(0) > key) return -1
+        let p = 0
+        for(let s = sz;s > 0;s = Math.floor(s/2)) {
+            while(p+s < sz && k(p+s) <= key) p += s
+        }
+        return p
+
+        function k(ndx) {
+            let rec = arr[ndx]
+            return rec[processor.options.gatheron]
+        }
+    }
+
+
+    /*      outcome/
+     * If there are new records
+     * (after filtering), call the
+     * 'raw' processor so it can
+     * processes the records.
+     *
+     * Also pass the `remaining`
+     * records as an undocumented
+     * field (useful for debugging
+     * kore itself).
      */
     function full_processor_1() {
-        processor.cb(null, all_recs, logname, remaining)
+        let filt_rem = remaining.filter(should_process_1)
+        if(filt_rem && filt_rem.length) {
+            let filt_recs = all_recs.filter(should_process_1)
+            processor.cb(null, filt_recs, logname, null, filt_rem)
+        }
     }
+
+    /*      problem/
+     * Is this record applicable to
+     * the current processor?
+     *
+     *      way/
+     * It should pass the filters or
+     * be a command
+     */
+    function should_process_1(rec) {
+        return is_cmd_rec_1(rec) || filtered_1(rec)
+    }
+
+    /*      outcome/
+     * Check if the record passes
+     * any filters in our processor
+     */
+    function filtered_1(rec) {
+        let filter = processor.options.filter
+        if(!filter) return true
+        for(let k in filter) {
+            if(filter[k] != rec[k]) return false
+        }
+        return true
+    }
+
+    /*      outcome/
+     * Check if the record is marked
+     * as a 'command' in our
+     * processor.
+     */
+    function is_cmd_rec_1(rec) {
+        if(!processor.options.commands) return false
+        for(let i = 0;i < processor.options.commands.length;i++) {
+            let cmd = processor.options.commands[i]
+            if(matches_cmd_1(cmd, rec)) return true
+        }
+        return false
+
+        function matches_cmd_1(cmd, rec) {
+            for(let k in cmd) {
+                if(rec[k] != cmd[k]) return false
+            }
+            return true
+        }
+    }
+
 }
 
+/*      outcome/
+ * Check if two objects given are
+ * equal - either because they refer
+ * to the same (immutable) object or
+ * because their key-values match up
+ */
+function isEq(o1, o2) {
+    if(o1 === o2) return true
+    if(typeof o1 != 'object') return false
+    if(typeof o2 != 'object') return false
+    let k1 = Object.keys(o1)
+    let k2 = Object.keys(o2)
+    if(k1.length != k2.length) return false
+    for(let i = 0;i < k1.length;i++) {
+        let k = k1[i]
+        if(!isEq(o1[k], o2[k])) return false
+    }
+    return true
+}
+
+
 function syncUpdatedLogs(kd) {
-    // TODO
+    nw.syncNow(kd)
+    // TODO: Set up Server Push
 }
 
 /*      outcome/
@@ -183,7 +431,7 @@ function saveUpdatedLogs(kd) {
 }
 
 /*      problem/
- * We have loaded some logs from
+ * We have loaded some shards from
  * disk and we need to keep track of
  * them so we don't attempt to
  * re-save them.
@@ -195,15 +443,13 @@ function saveUpdatedLogs(kd) {
  * disk and what has been saved
  * already.
  */
-function markLoaded(logs, kd) {
-    for(let k in logs) {
-        let log = logs[k]
-        let si = alwaysGetSaveInfo(log.name, kd)
-        for(let key in log.shards) {
-            let shard = log.shards[key]
-            let shi = alwaysGetShardInfo(shard, si)
-            shi.savedUpto = shard.records.length
-        }
+function markLoaded(shards, kd) {
+    if(!shards) return
+    for(let k in shards) {
+        let shard = shards[k]
+        let si = alwaysGetSaveInfo(shard.log, kd)
+        let shi = alwaysGetShardInfo(shard, si)
+        shi.savedUpto = shard.records.length
     }
 }
 
@@ -244,7 +490,7 @@ function alwaysGetShardInfo(shard, si) {
  * with the next smallest and so on
  * until we've combined them all.
  */
-function mergeShards(log) {
+function logRecords(log) {
     let shards = get_all_shards_1(log)
     if(!shards || !shards.length) return []
 
@@ -285,12 +531,12 @@ function mergeShards(log) {
             let rec1 = shard1[ndx1]
             let rec2 = shard2[ndx2]
 
-            if(v1._korenum < v2._korenum) {
+            if(rec1._korenum < rec2._korenum) {
                 res.push(rec1); ndx1++;
-            } else if(v1._korenum > v2._korenum) {
+            } else if(rec1._korenum > rec2._korenum) {
                 res.push(rec2); ndx2++;
             } else {
-                if(v1._korewho < v2._korewho) {
+                if(rec1._korewho < rec2._korewho) {
                     res.push(rec1); ndx1++;
                 } else {
                     res.push(rec2); ndx2++;
@@ -304,53 +550,74 @@ function mergeShards(log) {
 }
 
 /*      problem/
- * Given a new set of logs (loaded
- * from disk or from another node)
- * we need to merge them into our
- * existing logs so they become part
- * of our working set.
+ * Given a new set of log shards
+ * (loaded from disk or from another
+ * node) we need to merge them into
+ * our existing logs so they become
+ * part of our working set.
  *
  *      way/
- * If we have new logs we just add
- * them. If we have matching logs
- * it is only slightly trickier - we
- * merge the shards by taking any
- * new shards and any shards that
- * are bigger than the version we
- * have.
+ * If they are full new logs we add
+ * them. If we have matching logs we
+ * see if they have extra records
+ * and - if they do - we add them to
+ * ours. Otherwise we ignore them
+ * (should we report as errors?)
  */
-function mergeLogs(newlogs, mylogs) {
-    for(let k in newlogs) {
-        if(mylogs[k]) merge_log_1(newlogs[k], mylogs[k])
-        else add_log_1(newlogs[k], mylogs)
-    }
-
-    function add_log_1(newlog, mylogs) {
-        mylogs[newlog.name] = newlog
-    }
-
-    function merge_log_1(newlog, mylog) {
-        let newshards = newlog.shards
-        let myshards = mylog.shards
-        for(let k in newshards) {
-            if(myshards[k]) merge_shards_1(newshards[k], myshards[k], myshards)
-            else add_shard_1(newshards[k], myshards)
+function mergeShards(shards, mylogs) {
+    if(!shards) return
+    for(let i = 0;i < shards.length;i++) {
+        let shard = shards[i]
+        let mylog = mylogs[shard.log]
+        if(!mylog) add_log_1(shard, mylogs)
+        else {
+            let myshard = mylog.shards[shard.writer]
+            if(!myshard) add_shard_1(shard, mylog)
+            else add_extra_recs_1(shard, myshard)
         }
     }
 
-    function add_shard_1(newshard, myshards) {
-        myshards[newshard.writer] = newshard
+    function add_extra_recs_1(shard, myshard) {
+        let from = shard.from ? shard.from : 0
+        let mx = myshard.records.length
+        if(mx < from) return
+        let ofst = mx - from
+        let recs = shard.records.slice(ofst)
+        myshard.records = myshard.records.concat(recs)
     }
 
-    function merge_shards_1(newshard, myshard, myshards) {
-        if(newshard.records.length <= myshard.records.length) return
-        myshards[newshard.writer] = newshard
+    function add_shard_1(shard, mylog) {
+        if(!is_full_log_1(shard)) return
+        let myshard = ds.shard(shard.log, shard.writer)
+        myshard.records = shard.records
+
+        mylog.shards[myshard.writer] = myshard
     }
+
+    function add_log_1(shard, mylogs) {
+        if(!is_full_log_1(shard)) return
+
+        let log = ds.log(shard.log)
+        let myshard = ds.shard(shard.log, shard.writer)
+        myshard.records = shard.records
+
+        log.shards[myshard.writer] = myshard
+        mylogs[log.name] = log
+    }
+
+    /*      outcome/
+     * Check that this is a complete
+     * log by having (all) records
+     */
+    function is_full_log_1(shard) {
+        return (!shard.from && shard.records && shard.records.length)
+    }
+
 }
 
 module.exports = {
     addProcessor: addProcessor,
-    mergeLogs: mergeLogs,
+    mergeShards: mergeShards,
     raiseNewRecsEvent: raiseNewRecsEvent,
     markLoaded: markLoaded,
 }

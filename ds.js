@@ -27,22 +27,30 @@ function KD() {
         SAVETO: null,
         CONNECT: null,
         LISTEN: null,
+        AUTHREQ: null,
         CHECKREQ: null,
         ERR: null,
 
         FLUSH_PERIOD: 0,
+        REQ_PERIOD: 0,
 
         MIGRATEFN: null,
 
         SYNCHED: false,
         UNSYNCHED_LOGS: {},
 
+        SEND_SYNC_NOW: false,
+        PUSH_SYNC_NOW: false,
+        LAST_SEND_AT: 0,
+
         LOGS: {},
 
-        LOG_PROCESSORS: {},
+        LOG_PROCESSORS: [],
         PROCESSOR_CACHE: {},
 
         SAVEINFO: {},
+
+        CONNECT_NODE_INFO: null,
     }
 }
 
@@ -125,7 +133,7 @@ function latestRecNum(log) {
     return latest
 
     function last_rec_num_1(shard) {
-        let len = shard.records.lenght
+        let len = shard.records.length
         if(!len) return 0
         return shard.records[len-1]._korenum
     }

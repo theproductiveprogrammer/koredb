@@ -30,13 +30,15 @@ function node(options) {
     let koredata = ds.KD()
 
     options = options ? options : {}
+    koredata.ERR = errfn_1(options)
     koredata.WHOAMI = whoami_1(options)
     koredata.SAVETO = saveTo_1(options)
     koredata.CONNECT = connect_1(options)
     koredata.LISTEN = listen_1(options)
+    koredata.AUTHREQ = authreq_1(options)
     koredata.CHECKREQ = checkreq_1(options)
-    koredata.ERR = errfn_1(options)
     koredata.FLUSH_PERIOD = flushperiod_1(options)
+    koredata.REQ_PERIOD = reqperiod_1(options)
     koredata.MIGRATEFN = migratefn_1(options)
 
     start_node_1(koredata)
@@ -75,13 +77,23 @@ function node(options) {
         return options.saveTo
     }
 
-    /*      outcome/
-     * Return the user-provided url
-     * of 'upstream' node to
-     * connect to.
+    /*      understand/
+     * Expects the user to provide
+     * the 'host:port' of the other
+     * node to connect to.
      */
     function connect_1(options) {
-        return options.connect
+        if(options.connect) {
+            let hp = options.connect.split(':')
+            if(hp.length == 2) {
+                return {
+                    host: hp[0],
+                    port: hp[1],
+                }
+            } else {
+                return { host: hp[0] }
+            }
+        }
     }
 
     /*      outcome/
@@ -90,6 +102,24 @@ function node(options) {
      */
     function listen_1(options) {
         return options.listen
+    }
+
+    /*      problem/
+     * When listening for requests
+     * we don't want to be blindly
+     * accepting every incoming
+     * request as that could leave
+     * us open to problems.
+     *
+     *      way/
+     * The user can specify a
+     * `authReq` function that acts
+     * as a hook into her
+     * authentication system and
+     * prepares the request.
+     */
+    function authreq_1(options) {
+        return options.authReq
     }
 
     /*      problem/
@@ -127,7 +157,18 @@ function node(options) {
      */
     function flushperiod_1(options) {
         if(options.flush_period) return options.flush_period
-        else return 5000
+        else return 5 * 1000
+    }
+
+    /*      outcome/
+     * Return the user-defined
+     * request sync period (in
+     * seconds) or a default of 5
+     * minutes.
+     */
+    function reqperiod_1(options) {
+        if(options.req_period) return options.req_period
+        else return 5 * 1000 * 60
     }
 
     /*      outcome/
@@ -139,33 +180,32 @@ function node(options) {
     }
 
     /*      outcome/
-     * Sync up the node with
-     * existing logs and then listen
-     * for incoming connections to
-     * which we can provide data.
+     * If the node is not a 'hermit
+     * node'  - disconnected from
+     * everything, we load it's data
+     * from disk, and from other
+     * nodes by connecting to others
+     * and listening for other
+     * connections.
      *
-     * Note that if the node is a
-     * 'hermit' node - who does not
-     * save data, listen to other
-     * nodes or connect to anyone -
-     * then it starts up fully
-     * synched and nothing needs to
-     * be done. (Of course when it
-     * dies it's data will perish
-     * with it - unknown, unloved,
-     * and uncared for...)
+     * If the node is a 'hermit'
+     * node - who does not save
+     * data, listen to other nodes
+     * or connect to anyone - then
+     * it starts up fully synched
+     * and nothing needs to be done.
+     * (Of course when it dies it's
+     * data will perish with it -
+     * unknown, unloved, and uncared
+     * for...)
      */
     function start_node_1(kd) {
         if(is_hermit_node_1(kd)) {
             switchToSynchedMode(kd)
         } else {
-            sync_node_1(kd, (err) => {
-                if(err) kd.ERR(err)
-                else {
-                    pr.raiseNewRecsEvent(kd)
-                    accept_connections_1(kd)
-                }
-            })
+            start_db_1(kd)
+            start_connect_1(kd)
+            start_listen_1(kd)
         }
 
         /*      understand/
@@ -179,84 +219,43 @@ function node(options) {
             if(kd.LISTEN) return false
             return true
         }
-    }
 
-    /*      problem/
-     * A node can store it's data
-     * log locally on disk and/or
-     * send it to another node to
-     * store.
-     *
-     *      way/
-     * Get data logs (from our save
-     * location or from the
-     * network), merge with our own
-     * and sync up. If we don't have
-     * any data we don't merge and
-     * we also aren't synched - we
-     * need to wait for some
-     * incoming connections to give
-     * us data before we can sync
-     * up.
-     */
-    function sync_node_1(kd, cb) {
-
-        if(kd.SAVETO && kd.CONNECT) {
-            db.loadFrom(kd.SAVETO, (err, logs) => {
-                if(err) cb(err)
+        function start_db_1(kd) {
+            if(!kd.SAVETO) return
+            db.loadFrom(kd.SAVETO, (err, shards) => {
+                if(err) kd.ERR(err)
                 else {
-                    pr.markLoaded(logs, kd)
-                    pr.mergeLogs(logs, kd.LOGS)
-                    nw.join(kd.CONNECT, (err, logs) => {
-                        if(err) cb(err)
-                        else {
-                            pr.mergeLogs(logs, kd.LOGS)
-                            switchToSynchedMode(kd)
-                            cb()
-                        }
-                    })
-                }
-            })
-        } else if(kd.SAVETO) {
-            db.loadFrom(kd.SAVETO, (err, logs) => {
-                if(err) cb(err)
-                else {
-                    pr.markLoaded(logs, kd)
-                    pr.mergeLogs(logs, kd.LOGS)
+                    pr.markLoaded(shards, kd)
+                    pr.mergeShards(shards, kd.LOGS)
+                    pr.raiseNewRecsEvent(kd)
                     switchToSynchedMode(kd)
-                    cb()
                 }
             })
-        } else if(kd.CONNECT) {
-            nw.join(kd.CONNECT, (err, logs) => {
-                if(err) cb(err)
-                else {
-                    pr.mergeLogs(logs, kd.LOGS)
-                    switchToSynchedMode(kd)
-                    cb()
-                }
-            })
-        } else {
-            cb()
         }
-    }
 
-    /*      outcome/
-     * Get any incoming logs and
-     * merge with our own and sync
-     * up.
-     * NB: This is an ongoing
-     * process so the callback is
-     * called multiple times.
-     */
-    function accept_connections_1(kd) {
-        nw.listen(kd.LISTEN, kd.LOGS, (err, logs) => {
-            if(err) kd.ERR(err)
-            else {
-                pr.mergeLogs(logs, kd.LOGS)
-                switchToSynchedMode(kd)
-            }
-        })
+        function start_connect_1(kd) {
+            if(!kd.CONNECT) return
+            nw.join(kd.CONNECT, kd, (err, shards) => {
+                if(err) kd.ERR(err)
+                else {
+                    pr.mergeShards(shards, kd.LOGS)
+                    pr.raiseNewRecsEvent(kd)
+                    switchToSynchedMode(kd)
+                }
+            })
+        }
+
+        function start_listen_1(kd) {
+            if(!kd.LISTEN) return
+            nw.listen(kd.LISTEN, kd, (err, shards) => {
+                if(err) kd.ERR(err)
+                else {
+                    pr.mergeShards(shards, kd.LOGS)
+                    pr.raiseNewRecsEvent(kd)
+                    switchToSynchedMode(kd)
+                }
+            })
+        }
     }
 }
 
@@ -322,7 +321,21 @@ function switchToSynchedMode(kd) {
         move_log_recs_1(mylogs[k], tmplogs[k])
     }
 
-    pr.mergeLogs(tmplogs, kd.LOGS)
+    let shards = xtract_shards_1(tmplogs)
+
+    pr.mergeShards(shards, kd.LOGS)
+
+
+    function xtract_shards_1(logs) {
+        let shards = []
+        for(let k in logs) {
+            let log = logs[k]
+            for(let key in log.shards) {
+                shards.push(log.shards[key])
+            }
+        }
+        return shards
+    }
 
 
     /*      outcome/
@@ -359,6 +372,7 @@ function switchToSynchedMode(kd) {
      */
     function move_shard_1(by, shard) {
         if(!by) return
+        shard.from = by
         for(let i = 0;i < shard.records;i++) {
             let rec = shard.records[i]
             let rid = ds.recID(rec)

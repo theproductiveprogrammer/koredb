@@ -106,13 +106,70 @@ function startNode(req, res){
         data.errfn = (err) => {
             sendSSEMsg(JSON.stringify({error: err}))
         }
+        if(data.saveTo) {
+            data.saveTo = path.join(process.argv[1], 'data', data.saveTo)
+        }
         node = kore.node(data)
-        node.logProcessor('pink', (err, recs, logname, rem) => {
+        node.addProcessor((err, recs, logname, cmd, rem) => {
             sendSSEMsg({
                 err: err,
                 recs: recs,
                 logname: logname,
                 remaining: rem,
+            })
+        })
+        node.addProcessor({filter: {type:'contact'}},
+            (err, contacts, logname, cmd, rem) => {
+            sendSSEMsg({
+                filter: 'contact',
+                err: err,
+                contacts: contacts,
+                logname: logname,
+                remaining: rem,
+            })
+        })
+        node.addProcessor({filter: {type:'contact'}, gatheron: 'name', overwrite: true},
+            (err, contacts, logname) => {
+            sendSSEMsg({
+                filter: 'contact',
+                gatheron: 'name',
+                overwrite: true,
+                err: err,
+                contacts: contacts,
+                logname: logname,
+            })
+        })
+        node.addProcessor({filter: {type:'contact'}, gatheron: 'name'},
+            (err, contacts, logname) => {
+            sendSSEMsg({
+                filter: 'contact',
+                gatheron: 'name',
+                err: err,
+                contacts: contacts,
+                logname: logname,
+            })
+        })
+        node.addProcessor({filter: {type:'contact'},
+            gatheron: 'name',
+            commands: [ { type: 'delete' } ],
+        }, (err, contacts, logname, cmd) => {
+            if(cmd) {
+                for(let i = contacts.length-1;i >= 0;i--) {
+                    let contact = contacts[i]
+                    if(cmd.name == contact.name) {
+                        sendSSEMsg({deleting: contact})
+                        contacts.splice(i, 1)
+                    }
+                }
+                return
+            }
+            sendSSEMsg({
+                filter: 'contact',
+                gatheron: 'name',
+                commands: '[delete]',
+                err: err,
+                contacts: contacts,
+                logname: logname,
             })
         })
         res.end('Started')

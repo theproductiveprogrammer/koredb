@@ -20,11 +20,13 @@ Now we have **KORE**!
 ## Is Kore for me?
 
 **Kore** is ideal for you if you
-have an app that runs on multiple
-devices (say a web and mobile app),
-that need to share a simple DB and
-need to tolerate being disconnected
-occasionally.
+have an app with users on multiple
+devices (say their phone, pad, and
+desktop). **Kore** is ideal for apps
+that run on multiple devices that
+need storage that can keep in in
+sync while tolerating being
+occasionally disconnected.
 
 **Kore** will allow you to quickly
 and easily set up your initial data,
@@ -347,7 +349,7 @@ const kore = require('kore').node()
 kore.addRec('MyList', { a: 'new record' })
 
 // Process incoming records
-kore.addProcessor('MyList', (err, recs, logname) => {...})
+kore.addProcessor((err, recs, logname) => {...})
 
 ```
 
@@ -438,20 +440,18 @@ in log processing:
 
 **Kore** supports either or both
 patterns or you can choose to
-process the log messages entirely on
-your own.
+process the records in the logs
+entirely on your own.
 
 ```
-kore.addProcessor('MyList',
-    { filter: { type: 'contact' }, gatheron: 'name' },
+kore.addProcessor({ filter: { type: 'contact' }, gatheron: 'name' },
     (err, contacts, logname) => {
         // all contact objects merged on name available here
         // called each time they are updated
     }
 )
 
-kore.addProcessor('MyList',
-    { filter: { type: 'contact' }, gatheron: 'name',
+kore.addProcessor({ filter: { type: 'contact' }, gatheron: 'name',
       commands: [ { type: 'rename' }, { type: 'delete' } ] },
     (err, contacts, logname, commandrec) => {
         // Called whenever a matching command found
@@ -464,7 +464,7 @@ kore.addProcessor('MyList',
     }
 )
 
-kore.addProcessor('MyList', (err, recs, logname) => {
+kore.addProcessor((err, recs, logname) => {
     // All log records available
     // here - no processing done
 })

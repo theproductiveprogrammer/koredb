@@ -63,7 +63,7 @@ function loadFrom(folder, cb) {
             let paths = files.map((f) => path.join(folder, f))
             load_shards_1(paths, (err, shards) => {
                 if(err) cb(err)
-                else cb(null, shard_2_logs_1(shards))
+                else cb(null, shards)
             })
         }
     })
@@ -77,9 +77,12 @@ function loadFrom(folder, cb) {
             else {
                 let file = paths[ndx]
                 if(isShardFileName(file)) {
-                    deserialize(file, data, (err, shard) => {
-                        shards.push(shard)
-                        load_path_ndx_1(ndx+1)
+                    deserialize(file, (err, shard) => {
+                        if(err) cb(err)
+                        else {
+                            shards.push(shard)
+                            load_path_ndx_1(ndx+1)
+                        }
                     })
                 } else {
                     load_path_ndx_1(ndx+1)
@@ -87,20 +90,10 @@ function loadFrom(folder, cb) {
             }
         }
     }
-
-    function shard_2_logs_1(shards) {
-        let logs = {}
-        for(let i = 0;i < shards.length;i++) {
-            let shard = shards[i]
-            let logname = shard.log
-            let log_ = getLog(logs, logname)
-            log_.shards[shard.writer] = shard
-        }
-        return logs
-    }
 }
 
 function isShardFileName(f) {
+    f = path.basename(f)
     return /^shard-..*-..*\.kore$/.test(f)
 }
 
@@ -114,24 +107,22 @@ function shardFileName(shard) {
  * shard info and the rest as
  * records.
  */
-function deserialize(file, data, cb) {
+function deserialize(file, cb) {
     fs.readFile(file, 'utf8', (err, data) => {
         if(err) cb(err)
         else {
             let lines = data.split('\n')
             if(lines.length < 1) return cb(`${file} is empty`)
             let lndx = 0
+            let shard = { records: [] }
             try {
                 let si = JSON.parse(lines[lndx])
-                let shard = {
-                    writer: si.writer,
-                    log: si.log,
-                    records: [],
-                }
-                if(!shard.writer) return cb(`${file} missing writer identifier`)
-                if(!shard.log) return cb(`${file} missing log identifier`)
+                if(!si.writer) return cb(`${file} missing writer identifier`)
+                shard.writer = si.writer
+                if(!si.log) return cb(`${file} missing log identifier`)
+                shard.log = si.log
                 let chk = shardFileName(shard)
-                if(chk != file) return cb(`${file}: name does not match shard info`)
+                if(chk != path.basename(file)) return cb(`${file}: name does not match shard info`)
                 for(lndx = 1;lndx < lines.length;lndx++) {
                     if(lines[lndx] == "") continue
                     let rec = JSON.parse(lines[lndx])
@@ -139,10 +130,12 @@ function deserialize(file, data, cb) {
                     if(!rec._korewho) return cb(`${file}:${lndx+1}:Missing _korewho`)
                     shard.records.push(rec)
                 }
-                cb(null, shard)
             } catch(e) {
+                console.log(e)
                 cb(`${file}:${lndx+1}: Invalid JSON!`)
+                return
             }
+            cb(null, shard)
         }
     })
 }
