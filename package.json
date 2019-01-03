@@ -1,10 +1,14 @@
 {
-  "name": "kore",
-  "version": "0.2.0",
+  "name": "koredb",
+  "version": "0.3.0",
   "description": "The Simplest Distributed Log Database",
   "main": "index.js",
   "scripts": {
     "test": "node test/"
+  },
+  "repository": {
+      "type" : "git",
+      "url" : "https://github.com/theproductiveprogrammer/kore"
   },
   "author": "charles.lobo@gmail.com",
   "license": "MIT",
