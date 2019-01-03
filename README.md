@@ -636,8 +636,6 @@ or simply
 
 # Pending Features
 
-* Connection/Networking Support
-* Log Processor Support
 * Migration Support
 * Support for other languages
   (Python, Java, ...)
