@@ -1,6 +1,4 @@
 'use strict'
-const uuidv4 = require('uuid/v4')
-
 const ds = require('./ds')
 const up = require('./update')
 const pr = require('./process')
@@ -15,13 +13,13 @@ const ca = require('./cache')
  * to it to the user.
  * The following options are
  * supported:
- *      whoami: must be UUID of node
  *      saveTo: node save folder on disk
  *      connect: url of upstream node
  *      listen: listening port for other nodes
  *      checkReq: function to authenticate requests
  *      errfn: callback for errors
  *      migrate: migration function
+ *      whoami: must be UUID of node
  *
  * Given the settings we set the
  * options and start up the node.
@@ -31,7 +29,6 @@ function node(options) {
 
     options = options ? options : {}
     koredata.ERR = errfn_1(options)
-    koredata.WHOAMI = whoami_1(options)
     koredata.SAVETO = saveTo_1(options)
     koredata.CONNECT = connect_1(options)
     koredata.LISTEN = listen_1(options)
@@ -40,6 +37,7 @@ function node(options) {
     koredata.FLUSH_PERIOD = flushperiod_1(options)
     koredata.REQ_PERIOD = reqperiod_1(options)
     koredata.MIGRATEFN = migratefn_1(options)
+    koredata.WHOAMI = whoami_1(options)
 
     start_node_1(koredata)
 
@@ -48,7 +46,7 @@ function node(options) {
         addProcessor: (...a) => pr.addProcessor(koredata, ...a),
 
         recID: ds.recID,
-        uuid: up.uuid,
+        uuid: db.uuid,
         cachedUpto: ca.cachedUpto,
         afterCached: ca.afterCached,
     }
@@ -63,7 +61,6 @@ function node(options) {
      */
     function whoami_1(options) {
         if(options.whoami) return options.whoami
-        return uuid()
     }
 
     /*      outcome/
@@ -222,13 +219,19 @@ function node(options) {
 
         function start_db_1(kd) {
             if(!kd.SAVETO) return
-            db.loadFrom(kd.SAVETO, (err, shards) => {
+            db.whoami(kd.SAVETO, (err, nodeid) => {
                 if(err) kd.ERR(err)
                 else {
-                    pr.markLoaded(shards, kd)
-                    pr.mergeShards(shards, kd.LOGS)
-                    pr.raiseNewRecsEvent(kd)
-                    switchToSynchedMode(kd)
+                    db.loadFrom(kd.SAVETO, (err, shards) => {
+                        if(err) kd.ERR(err)
+                        else {
+                            if(!kd.WHOAMI) kd.WHOAMI = nodeid
+                            pr.markLoaded(shards, kd)
+                            pr.mergeShards(shards, kd.LOGS)
+                            pr.raiseNewRecsEvent(kd)
+                            switchToSynchedMode(kd)
+                        }
+                    })
                 }
             })
         }
@@ -257,13 +260,6 @@ function node(options) {
             })
         }
     }
-}
-
-/*      outcome/
- * Generate a UUID
- */
-function uuid(){
-    return uuidv4()
 }
 
 /*      problem/
@@ -387,7 +383,7 @@ function switchToSynchedMode(kd) {
 
 module.exports = {
     node: node,
-    uuid: uuid,
+    uuid: db.uuid,
     cachedUpto: ca.cachedUpto,
     afterCached: ca.afterCached,
 }

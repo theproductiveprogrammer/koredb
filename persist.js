@@ -1,6 +1,7 @@
 'use strict'
 const fs = require('fs')
 const path = require('path')
+const uuidv4 = require('uuid/v4')
 
 /*      outcome/
  * Save the given shard records to
@@ -43,6 +44,41 @@ function saveTo(folder, shard, recs, cb) {
         fs.appendFile(p, line, 'utf8', (err) => {
             if(err) cb(err)
             else save_rec_ndx_1(ndx+1)
+        })
+    }
+}
+
+/*      outcome/
+ * Generate a UUID
+ */
+function uuid(){
+    return uuidv4()
+}
+
+/*      outcome/
+ * Load the given nodeid from
+ * `.koreid` file (creating if
+ * doesn't exist)
+ */
+function whoami(folder, cb) {
+    let kid = path.join(folder, '.koreid')
+    fs.readFile(kid, 'utf8', (err, data) => {
+        if(err){
+            if(err.code == 'ENOENT') new_nodeid_1(kid, cb)
+            else cb(err)
+        } else cb(null, data)
+    })
+
+    function new_nodeid_1(kid, cb) {
+        let id = uuid()
+        fs.mkdir(folder, {recursive:true}, (err) => {
+            if(err && err.code != 'EEXIST') cb(err)
+            else {
+                fs.writeFile(kid, id, 'utf8', (err) => {
+                    if(err) cb(err)
+                    else cb(null, id)
+                })
+            }
         })
     }
 }
@@ -184,6 +220,8 @@ function flush(folder, shard) {
 
 module.exports = {
     saveTo: saveTo,
+    whoami: whoami,
     loadFrom: loadFrom,
     flush: flush,
+    uuid: uuid,
 }

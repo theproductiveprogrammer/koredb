@@ -9,7 +9,8 @@ several options but the minimum
 startup is just a few lines.
 
 ```
-const kore = require('kore').node()
+const koredb = require('koredb')
+const kore = koredb.node()
 ...
 
 // Add a new record
@@ -30,7 +31,6 @@ any of the following parameters.
 ```
 
 let options = {
-    whoami: <uuid identifying node>,
     saveTo: <db folder to save logs>,
     connect: <host:port of other node>,
     listen: <port to listen for other nodes>,
@@ -38,20 +38,37 @@ let options = {
     authReq: <authentication hook fn>,
     errfn: <your replacement for console.error>,
     migrate: <migration function>,
+    whoami: <uuid identifying node>,
 }
-const kore = require('kore').node(options)
+const kore = koredb.node(options)
 
 ```
 All the settings are optional and
 will depend on the configuration of
 your network of nodes.
 
-Setting `whoami` can be done by
-generating and saving a NODEID
-somewhere. Doing so is highly
-recommended (see 'Who Am I' note
-in [Concepts](CONCEPTS.md)
-documentation).
+|  Option  |  Use |
+| -------- | ---- |
+| saveTo | If set, persist data here |
+| connect | If set, connect to this node to synchronize |
+| listen | If set, starts a server on this port |
+| checkReq | Authentication hook (see [Concepts](docs/CONCEPTS.md)) |
+| authReq | Authentication hook (see [Concepts](docs/CONCEPTS.md)) |
+| errfn | If set, will send messages here instead to `console.error` |
+| migrate | Migration function (see [Concepts](docs/CONCEPTS.md)) |
+| whoami | Used as NODEID if set (see [Concepts](docs/CONCEPTS.md)) |
+
+
+If `saveTo` and `connect` (or
+`listen`) are all not set this
+node will start and work but not
+save it's data and not
+synchronize with other nodes. So
+all the data will vanish when
+the node shut's down. This is
+called a 'hermit' node and is
+useful for testing and
+experimentation.
 
 
 # Processing Log Records

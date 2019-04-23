@@ -91,13 +91,18 @@ create the integrated log. Each
 personal log 'shard' is identified
 by a UUID.
 
-For this reason, it is recommended
-that you set a UUID for every node
-that is running kore. You can use
-the function `kore.uuid()` to
-generate the UUID for your node and
-store it so it can be provided every
-time on start up.
+
+If you do not provide `kore`
+with a persistent data store (by
+setting the `saveTo` option), it
+will auto-generate an ID
+everytime. If this node
+generates logs then those logs
+will contain new ID's every time
+the node is started. In most
+cases, this is not desirable so
+you can set the id directly
+using the `whoami` parameter.
 
 ```
 let NODEID = kore.uuid()
@@ -109,16 +114,8 @@ let options = {
     whoami: NODEID,
     ...
 }
-const kore = require('kore').node(options)
+const kore = koredb.node(options)
 ```
-
-If you do not provide this, kore
-auto-generates a uuid every time
-it starts up - which means that
-there could be a large number of
-log shards that need to be merged
-which can cause `kore` to slow down
-after a while.
 
 
 # Kore Record Fields (and Record Id's)

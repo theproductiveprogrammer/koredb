@@ -105,6 +105,7 @@ function startNode(req, res){
     withPostData(req, res, (data) => {
         data.errfn = (err) => {
             sendSSEMsg(JSON.stringify({error: err}))
+            console.error(err)
         }
         if(data.saveTo) {
             data.saveTo = path.join(process.argv[1], 'data', data.saveTo)
