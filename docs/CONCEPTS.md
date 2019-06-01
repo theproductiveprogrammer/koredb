@@ -211,4 +211,14 @@ new log so you can move over
 systematically and stop supporting
 the old logs after some time.
 
+
+# Browsing Data
+
+As you use **Kore** you may want
+to explore your data. This is
+explained in the
+[./START.md](Getting Started)
+document.
+
+
 * [Back](../README.md)

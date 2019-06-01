@@ -380,10 +380,26 @@ function switchToSynchedMode(kd) {
     }
 }
 
+function browse(loc) {
+    db.roughLoadFrom(loc, (errs, shards) => {
+        let r = {
+            errs: errs,
+            logs: {}
+        }
+        if(shards.length) pr.mergeShards(shards, r.logs)
+        for(let logname in r.logs) {
+            let log = r.logs[logname]
+            let all_recs = pr.logRecords(log)
+            log.records = all_recs
+        }
+        global.koredata = r
+    })
+}
 
 module.exports = {
     node: node,
     uuid: db.uuid,
     cachedUpto: ca.cachedUpto,
     afterCached: ca.afterCached,
+    browse: browse,
 }

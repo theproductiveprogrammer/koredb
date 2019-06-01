@@ -623,4 +623,5 @@ module.exports = {
     mergeShards: mergeShards,
     raiseNewRecsEvent: raiseNewRecsEvent,
     markLoaded: markLoaded,
+    logRecords: logRecords,
 }

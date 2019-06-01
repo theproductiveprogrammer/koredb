@@ -128,6 +128,41 @@ function loadFrom(folder, cb) {
     }
 }
 
+function roughLoadFrom(folder, cb) {
+    fs.readdir(folder, (err, files) => {
+        if(err) {
+            if(err.code == 'ENOENT') cb()
+            else cb([err])
+        } else {
+            let paths = files.map((f) => path.join(folder, f))
+            load_shards_1(paths, cb)
+        }
+    })
+
+    function load_shards_1(paths, cb) {
+        let shards = []
+        let errs = []
+        load_path_ndx_1(0)
+
+        function load_path_ndx_1(ndx) {
+            if(ndx >= paths.length) cb(errs, shards)
+            else {
+                let file = paths[ndx]
+                if(isShardFileName(file)) {
+                    roughDeserialize(file, (errors, shard) => {
+                        shards.push(shard)
+                        errs = errs.concat(errors)
+                        load_path_ndx_1(ndx+1)
+                    })
+                } else {
+                    load_path_ndx_1(ndx+1)
+                }
+            }
+        }
+    }
+}
+
+
 function isShardFileName(f) {
     f = path.basename(f)
     return /^shard-..*-..*\.kore$/.test(f)
@@ -177,6 +212,56 @@ function deserialize(file, cb) {
 }
 
 
+/*      outcome/
+ * Similar to deserialize - we read
+ * the file treating the first line
+ * as info and the rest as records.
+ * BUT we do not fail at any point
+ * doggedly walking through all records
+ * even when we face errors.
+ */
+function roughDeserialize(file, cb) {
+    let errs = []
+    let shard = { writer: "NO WRITER FOUND", log: "NO LOG FOUND", records: [] }
+    fs.readFile(file, 'utf8', (err, data) => {
+        if(err) {
+            errs.push(`${file}: Read Failed`)
+            errs.push(err)
+        } else {
+            let lines = data.split('\n')
+            if(lines.length < 1) {
+                errs.push(`${file}: Error - empty file`)
+            } else {
+                let lndx = 0
+                try {
+                    let si = JSON.parse(lines[lndx])
+                    if(si.writer) shard.writer = si.writer
+                    if(si.log) shard.log = si.log
+                    let chk = shardFileName(shard)
+                    if(chk != path.basename(file)) errs.push(`${file}: name does not match shard info`)
+                } catch(e) {
+                    errs.push(`${file}: Failed to parse shard info (1st line)`)
+                    errs.push(e)
+                }
+                for(lndx = 1;lndx < lines.length;lndx++) {
+                    if(lines[lndx] == "") continue
+                    try {
+                        let rec = JSON.parse(lines[lndx])
+                        if(!rec._korenum) errs.push(`${file}:${lndx+1}:Missing _korenum`)
+                        if(!rec._korewho) errs.push(`${file}:${lndx+1}:Missing _korewho`)
+                        shard.records.push(rec)
+                    } catch(e) {
+                        errs.push(`${file}:${lndx+1}:Failed to parse record`)
+                        errs.push(e)
+                    }
+                }
+            }
+        }
+        cb(errs, shard)
+    })
+}
+
+
 /*      problem/
  * Flush the given shard file to
  * ensure that it is correctly
@@ -222,6 +307,7 @@ module.exports = {
     saveTo: saveTo,
     whoami: whoami,
     loadFrom: loadFrom,
+    roughLoadFrom: roughLoadFrom,
     flush: flush,
     uuid: uuid,
 }

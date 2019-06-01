@@ -115,6 +115,48 @@ kore.addProcessor((err, recs, logname) => {
 })
 ```
 
+
+# Browsing Your Data
+
+As you gather data it is important and
+useful to be able to play around and
+explore with your data. Making ad-hoc
+queries of your data and trying out
+various scenarios is often very
+important.
+
+The good news is that it is very simple
+to do this in **Kore**. Simply drop down
+into the node REPL and load your data
+and suddenly you have all the power of
+the _entire javascript language_ at your
+disposal to slice, dice, and aggregate
+your data in any way you want.
+
+```
+node
+> let kore = require('koredb')
+> kore.browse('path/to/data/folder')
+> koredata
+  { errs: [],
+    logs: {
+    ...
+    }
+  }
+>
+```
+
+Once you use `kore.browse('path/to/data')`,
+the global variable `koredata` is
+populated with a snapshot of the logs
+(and any errors it encountered during
+loading). From this point onward you can
+simply use javascript to `map`,
+`filter`, and perform any kind of
+complex query you can dream of using
+simple javascript.
+
+
 # And Finally
 
 Now that you know how to use
