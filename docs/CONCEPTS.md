@@ -217,7 +217,7 @@ the old logs after some time.
 As you use **Kore** you may want
 to explore your data. This is
 explained in the
-[./START.md](Getting Started)
+[Getting Started](./START.md)
 document.
 
 
